@@ -1,0 +1,10 @@
+{
+  "id": "htmlmogged",
+  "name": "htmlmogged",
+  "version": "1.0.0",
+  "minAppVersion": "1.12.7",
+  "description": "Export Markdown notes as polished HTML with navigation and an interactive link graph.",
+  "author": "racks0nracks",
+  "authorUrl": "https://github.com/racks0nracks",
+  "isDesktopOnly": true
+}

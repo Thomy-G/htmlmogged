@@ -1,0 +1,31 @@
+{
+  "name": "htmlmogged",
+  "version": "1.0.0",
+  "description": "Export Markdown notes as polished HTML with navigation and an interactive link graph.",
+  "main": "main.js",
+  "type": "module",
+  "author": "racks0nracks",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "test": "node --experimental-strip-types tests/exporter.test.mjs",
+    "check": "npm run lint && npm test && npm run build"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.15.17",
+    "esbuild": "0.25.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.4.0",
+    "globals": "^17.6.0",
+    "jiti": "^2.6.1",
+    "obsidian": "latest",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.1"
+  }
+}

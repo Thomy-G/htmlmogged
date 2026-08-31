@@ -1,0 +1,9 @@
+node_modules/
+main.js
+*.map
+demo-vault/.obsidian/plugins/
+demo-vault/.obsidian/appearance.json
+demo-vault/.obsidian/core-plugins.json
+demo-vault/.obsidian/workspace.json
+demo-vault/.obsidian/workspace-mobile.json
+demo-vault/.obsidian/plugins/htmlmogged/data.json

@@ -1,0 +1,8 @@
+/* htmlmogged's Obsidian UI uses native components; exported page styles are embedded. */
+.htmlmogged-render-host {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 900px;
+  visibility: hidden;
+}

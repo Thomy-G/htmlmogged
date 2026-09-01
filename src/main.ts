@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { FileSystemAdapter, getAllTags, Notice, Plugin, PluginSettingTab, TFile } from "obsidian";
+import { FileSystemAdapter, getAllTags, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 
 import { HtmlExporter, type ExportResult } from "./exporter";
 import { matchesExportFilters, parseList } from "./pure";
@@ -12,6 +12,7 @@ interface HtmlmoggedSettings {
   excludeFolders: string;
   includeTags: string;
   excludeTags: string;
+  selectedNotes: string[];
 }
 
 const DEFAULT_SETTINGS: HtmlmoggedSettings = {
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS: HtmlmoggedSettings = {
   excludeFolders: "",
   includeTags: "",
   excludeTags: "",
+  selectedNotes: [],
 };
 
 export default class HtmlmoggedPlugin extends Plugin {
@@ -31,8 +33,25 @@ export default class HtmlmoggedPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<HtmlmoggedSettings> | null);
     this.addSettingTab(new HtmlmoggedSettingTab(this));
 
-    this.addRibbonIcon("folder-up", "Export vault with htmlmogged", () => {
-      void this.exportVault().catch((error: unknown) => this.showError(error));
+    this.addRibbonIcon("folder-up", "Choose notes to export", () => this.openNotePicker());
+
+    this.addCommand({
+      id: "export-current-note",
+      name: "Export current note",
+      callback: () => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+          new Notice("Htmlmogged: open a note first");
+          return;
+        }
+        void this.exportFiles([file]).catch((error: unknown) => this.showError(error));
+      },
+    });
+
+    this.addCommand({
+      id: "choose-notes-to-export",
+      name: "Choose notes to export",
+      callback: () => this.openNotePicker(),
     });
 
     this.addCommand({
@@ -43,28 +62,41 @@ export default class HtmlmoggedPlugin extends Plugin {
   }
 
   async exportVault(destination?: string): Promise<ExportResult> {
+    return this.exportFiles(this.exportableFiles(), destination);
+  }
+
+  async exportSelection(files: TFile[]): Promise<ExportResult> {
+    this.settings.selectedNotes = files.map((file) => file.path);
+    await this.saveData(this.settings);
+    return this.exportFiles(files);
+  }
+
+  private exportableFiles(): TFile[] {
     const filters = {
       includeFolders: parseList(this.settings.includeFolders),
       excludeFolders: parseList(this.settings.excludeFolders),
       includeTags: parseList(this.settings.includeTags),
       excludeTags: parseList(this.settings.excludeTags),
     };
-    const files = this.app.vault.getMarkdownFiles().filter((file) => {
+    return this.app.vault.getMarkdownFiles().filter((file) => {
       const cache = this.app.metadataCache.getFileCache(file);
       return matchesExportFilters(file.path, cache ? getAllTags(cache) ?? [] : [], filters);
     });
-    return this.exportFiles(files, destination);
+  }
+
+  private openNotePicker(): void {
+    new NotePickerModal(this, this.exportableFiles()).open();
   }
 
   private async exportFiles(files: TFile[], destination?: string): Promise<ExportResult> {
-    if (this.exporting) throw new Error("an htmlmogged export is already running");
+    if (this.exporting) throw new Error("an HTMLmogged export is already running");
     this.exporting = true;
     try {
       const target = destination?.trim() || this.settings.outputDirectory.trim() || this.defaultOutputDirectory();
       const landingPath = this.resolveLandingNote(files);
-      new Notice(`htmlmogged is exporting ${files.length} note${files.length === 1 ? "" : "s"}…`);
+      new Notice(`HTMLmogged is exporting ${files.length} note${files.length === 1 ? "" : "s"}…`);
       const result = await new HtmlExporter(this.app).export(files, target, landingPath);
-      new Notice(`htmlmogged wrote ${result.pagesWritten} pages to ${result.destination}`);
+      new Notice(`HTMLmogged wrote ${result.pagesWritten} pages to ${result.destination}`);
       return result;
     } finally {
       this.exporting = false;
@@ -75,22 +107,80 @@ export default class HtmlmoggedPlugin extends Plugin {
     const link = this.settings.landingNote.trim();
     if (!link) return undefined;
     const file = this.app.metadataCache.getFirstLinkpathDest(link, "");
-    if (!file || !files.some((candidate) => candidate.path === file.path)) {
-      throw new Error(`landing note is missing or excluded: ${link}`);
-    }
-    return file.path;
+    if (!file) throw new Error(`landing note is missing: ${link}`);
+    return files.some((candidate) => candidate.path === file.path) ? file.path : undefined;
   }
 
   private defaultOutputDirectory(): string {
     const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) throw new Error("htmlmogged requires a local desktop vault");
+    if (!(adapter instanceof FileSystemAdapter)) throw new Error("HTMLmogged requires a local desktop vault");
     return path.join(adapter.getBasePath(), ".htmlmogged");
   }
 
   private showError(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("htmlmogged export failed", error);
-    new Notice(`htmlmogged export failed: ${message}`, 8000);
+    console.error("HTMLmogged export failed", error);
+    new Notice(`HTMLmogged export failed: ${message}`, 8000);
+  }
+}
+
+class NotePickerModal extends Modal {
+  constructor(private readonly htmlmogged: HtmlmoggedPlugin, private readonly files: TFile[]) {
+    super(htmlmogged.app);
+  }
+
+  onOpen(): void {
+    this.setTitle("Export notes");
+    const selected = new Set(this.htmlmogged.settings.selectedNotes);
+    if (selected.size === 0) {
+      const active = this.app.workspace.getActiveFile();
+      if (active) selected.add(active.path);
+    }
+
+    let rows: { file: TFile; setting: Setting }[] = [];
+    let exportButton: { setDisabled(disabled: boolean): unknown };
+    const controls = new Setting(this.contentEl)
+      .setName("Choose notes")
+      .setDesc(`${selected.size} selected`)
+      .addSearch((search) => search
+        .setPlaceholder("Filter notes")
+        .onChange((value) => {
+          const query = value.trim().toLowerCase();
+          rows.forEach(({ file, setting }) => {
+            setting.settingEl.hidden = !file.path.toLowerCase().includes(query);
+          });
+        }))
+      .addButton((button) => {
+        exportButton = button
+          .setButtonText("Export")
+          .setCta()
+          .setDisabled(selected.size === 0)
+          .onClick(async () => {
+            const files = this.files.filter((file) => selected.has(file.path));
+            this.close();
+            await this.htmlmogged.exportSelection(files);
+          });
+      });
+
+    const list = this.contentEl.createDiv({ cls: "htmlmogged-note-picker" });
+    rows = this.files.map((file) => {
+      const setting = new Setting(list)
+        .setName(file.basename)
+        .setDesc(file.path)
+        .addToggle((toggle) => toggle
+          .setValue(selected.has(file.path))
+          .onChange((value) => {
+            if (value) selected.add(file.path);
+            else selected.delete(file.path);
+            controls.setDesc(`${selected.size} selected`);
+            exportButton.setDisabled(selected.size === 0);
+          }));
+      return { file, setting };
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }
 

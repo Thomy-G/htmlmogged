@@ -1,6 +1,6 @@
 {
   "id": "htmlmogged",
-  "name": "htmlmogged",
+  "name": "HTMLmogged",
   "version": "1.0.0",
   "minAppVersion": "1.13.1",
   "description": "Export Markdown notes as polished HTML with navigation and an interactive link graph.",

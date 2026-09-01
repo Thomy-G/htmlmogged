@@ -48,16 +48,27 @@ const graphElement = {
 	append: () => undefined,
 	setAttribute: () => undefined,
 };
+const rootElement = { dataset: {} };
+const themeListeners = new Map();
+const themeElement = {
+	addEventListener: (type, listener) => themeListeners.set(type, listener),
+	setAttribute: () => undefined,
+	textContent: "",
+};
 assert.doesNotThrow(() => new vm.Script(pageScript).runInNewContext({
 	document: {
-		documentElement: { dataset: {} },
+		documentElement: rootElement,
 		getElementById: (id) => id === "graph-data"
 			? { textContent: '{"nodes":[],"edges":[],"current":""}' }
-			: id === "link-graph" ? graphElement : null,
+			: id === "link-graph" ? graphElement : id === "theme-toggle" ? themeElement : null,
 	},
 	localStorage: { getItem: () => { throw new Error("storage denied"); } },
 }), "graphs initialize when local storage is unavailable");
 assert.ok(graphListeners.has("wheel"), "graph interaction is installed");
+assert.equal(themeElement.textContent, "Light theme");
+themeListeners.get("click")();
+assert.equal(rootElement.dataset.theme, "light");
+assert.equal(themeElement.textContent, "Dark theme");
 
 const testRoot = await mkdtemp(path.join(tmpdir(), "htmlmogged-test-"));
 try {
@@ -83,7 +94,7 @@ try {
 	const unmanaged = path.join(testRoot, "unmanaged");
 	await mkdir(unmanaged);
 	await writeFile(path.join(unmanaged, "index.html"), "keep me");
-	await assert.rejects(beginOutputTransaction(unmanaged), /not managed by htmlmogged/u);
+	await assert.rejects(beginOutputTransaction(unmanaged), /not managed by HTMLmogged/u);
 	await assert.rejects(beginOutputTransaction(path.parse(testRoot).root), /filesystem root/u);
 } finally {
 	await rm(testRoot, { recursive: true, force: true });

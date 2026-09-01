@@ -259,35 +259,35 @@ export class HtmlExporter {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="generator" content="htmlmogged 1.0.0">
+  <meta name="generator" content="HTMLmogged 1.0.0">
   <title>${escapeHtml(title)}</title>
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="index.html"><span>hm</span> htmlmogged</a>
-    <button id="theme-toggle" type="button" aria-label="Toggle color theme">◐</button>
+    <a class="brand" href="index.html">HTMLmogged</a>
+    <button id="theme-toggle" type="button">Light theme</button>
   </header>
   <div class="shell">
     <aside class="navigation">
-      <label for="note-search">notes</label>
-      <input id="note-search" type="search" placeholder="filter notes…" autocomplete="off">
+      <label for="note-search">Notes</label>
+      <input id="note-search" type="search" placeholder="Filter notes…" autocomplete="off">
       <nav>${navigation}</nav>
     </aside>
     <main>
       <article>
-        <p class="eyebrow">exported note</p>
+        <p class="eyebrow">Exported note</p>
         <h1 class="page-title">${escapeHtml(title)}</h1>
         <div class="note-content">${content}</div>
       </article>
     </main>
     <aside class="graph-card">
       <div class="graph-heading">
-        <div><p class="eyebrow">vault map</p><h2>interactive graph</h2></div>
+        <div><p class="eyebrow">Vault map</p><h2>Interactive graph</h2></div>
         <span>${graph.nodes.length} nodes</span>
       </div>
       <svg id="link-graph" viewBox="0 0 360 320" role="img" aria-label="Interactive graph of linked notes"></svg>
-      <p class="graph-help">drag nodes · click to open</p>
+      <p class="graph-help">Drag nodes · click to open · scroll to zoom</p>
     </aside>
   </div>
   <script id="graph-data" type="application/json">${safeJson(graph)}</script>
@@ -309,7 +309,7 @@ async function waitFor(condition: () => boolean, timeout: number): Promise<boole
 
 function redirectPage(target: string): string {
   const safeTarget = escapeHtml(target);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${safeTarget}"><title>htmlmogged</title></head><body><a href="${safeTarget}">open exported notes</a></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${safeTarget}"><title>HTMLmogged</title></head><body><a href="${safeTarget}">Open exported notes</a></body></html>`;
 }
 
 function normalizeResource(value: string): string {
@@ -348,28 +348,28 @@ function resourceMime(extension: string): string | undefined {
 const PAGE_STYLES = String.raw`
 :root {
   color-scheme: dark;
-  --bg: #080b14;
-  --panel: rgba(17, 24, 39, .76);
-  --panel-solid: #111827;
-  --line: rgba(148, 163, 184, .18);
-  --text: #e8edf7;
-  --muted: #94a3b8;
-  --violet: #a78bfa;
-  --cyan: #22d3ee;
-  --glow: rgba(124, 58, 237, .24);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #202020;
+  --panel: #262626;
+  --panel-solid: #1e1e1e;
+  --hover: #363636;
+  --line: #3a3a3a;
+  --text: #dcddde;
+  --muted: #999;
+  --accent: #8b7cf6;
+  --code-bg: #171717;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f5f7ff;
-  --panel: rgba(255, 255, 255, .82);
+  --bg: #fff;
+  --panel: #f6f6f6;
   --panel-solid: #fff;
-  --line: rgba(51, 65, 85, .14);
-  --text: #172033;
-  --muted: #64748b;
-  --violet: #6d28d9;
-  --cyan: #0891b2;
-  --glow: rgba(124, 58, 237, .12);
+  --hover: #e9e9e9;
+  --line: #ddd;
+  --text: #2e3338;
+  --muted: #6b6b6b;
+  --accent: #705dcf;
+  --code-bg: #f5f5f5;
 }
 * { box-sizing: border-box; }
 html { min-height: 100%; background: var(--bg); }
@@ -377,72 +377,52 @@ body {
   min-height: 100vh;
   margin: 0;
   color: var(--text);
-  background:
-    radial-gradient(circle at 78% 4%, var(--glow), transparent 30rem),
-    radial-gradient(circle at 8% 80%, rgba(34, 211, 238, .08), transparent 28rem),
-    var(--bg);
+  background: var(--bg);
 }
-a { color: var(--cyan); text-decoration: none; }
-a:hover { color: var(--violet); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 .topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  height: 64px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(18px);
+  background: var(--panel);
 }
-.brand { color: var(--text); font-weight: 750; letter-spacing: -.02em; }
-.brand span {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  margin-right: 8px;
-  border-radius: 9px;
-  color: white;
-  background: linear-gradient(135deg, #7c3aed, #0891b2);
-  box-shadow: 0 0 24px var(--glow);
-}
+.brand { color: var(--text); font-weight: 600; }
 button, input { font: inherit; }
 #theme-toggle {
-  width: 36px;
-  height: 36px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 4px;
   color: var(--text);
-  background: var(--panel);
+  background: var(--panel-solid);
   cursor: pointer;
 }
 .shell {
-  width: min(1540px, 100%);
+  width: 100%;
+  min-height: calc(100vh - 48px);
   margin: 0 auto;
-  padding: 28px;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 360px;
-  gap: 24px;
+  grid-template-columns: 240px minmax(0, 1fr) 320px;
   align-items: start;
 }
 .navigation, .graph-card, article {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--panel);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .14);
-  backdrop-filter: blur(16px);
+  background: transparent;
 }
-.navigation, .graph-card { position: sticky; top: 92px; }
-.navigation { padding: 16px; }
+.navigation, .graph-card { position: sticky; top: 48px; height: calc(100vh - 48px); background: var(--panel); }
+.navigation { padding: 16px 12px; border-right: 1px solid var(--line); }
 .navigation label, .eyebrow {
   margin: 0 0 8px;
   color: var(--muted);
-  font-size: .72rem;
-  font-weight: 750;
-  letter-spacing: .12em;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .04em;
   text-transform: uppercase;
 }
 #note-search {
@@ -450,43 +430,40 @@ button, input { font: inherit; }
   margin-bottom: 12px;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 4px;
   outline: none;
   color: var(--text);
-  background: color-mix(in srgb, var(--panel-solid) 74%, transparent);
+  background: var(--panel-solid);
 }
-#note-search:focus { border-color: var(--violet); box-shadow: 0 0 0 3px var(--glow); }
-.navigation nav { display: grid; gap: 4px; max-height: calc(100vh - 190px); overflow: auto; }
-.note-link { padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: .9rem; }
-.note-link:hover { color: var(--text); background: var(--glow); }
+#note-search:focus { border-color: var(--accent); }
+.navigation nav { display: grid; gap: 2px; max-height: calc(100vh - 138px); overflow: auto; }
+.note-link { padding: 6px 8px; border-radius: 4px; color: var(--muted); font-size: .9rem; }
+.note-link:hover { color: var(--text); background: var(--hover); text-decoration: none; }
 .note-link[hidden] { display: none; }
 main { min-width: 0; }
-article { padding: clamp(24px, 5vw, 64px); }
+article { width: min(760px, 100%); margin: 0 auto; padding: 48px 32px 80px; }
 .page-title {
-  margin: 0 0 36px;
-  font-size: clamp(2.3rem, 7vw, 5.5rem);
-  line-height: .95;
-  letter-spacing: -.065em;
-  background: linear-gradient(110deg, var(--text) 25%, var(--violet), var(--cyan));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  margin: 0 0 32px;
+  color: var(--text);
+  font-size: 2.25rem;
+  line-height: 1.2;
+  letter-spacing: -.025em;
 }
 .note-content { line-height: 1.75; font-size: 1.03rem; }
 .note-content > :first-child { margin-top: 0; }
 .note-content h1, .note-content h2, .note-content h3 { margin-top: 2.2em; line-height: 1.18; letter-spacing: -.025em; }
 .note-content h2 { padding-bottom: .4em; border-bottom: 1px solid var(--line); }
-.note-content p, .note-content ul, .note-content ol { color: color-mix(in srgb, var(--text) 88%, var(--muted)); }
-.note-content code { padding: .18em .4em; border: 1px solid var(--line); border-radius: 6px; color: var(--cyan); background: var(--panel-solid); }
-.note-content pre { overflow: auto; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #080c16; }
-.note-content pre code { padding: 0; border: 0; color: #dbeafe; background: none; }
+.note-content p, .note-content ul, .note-content ol { color: var(--text); }
+.note-content code { padding: .18em .4em; border-radius: 3px; color: var(--text); background: var(--code-bg); }
+.note-content pre { overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); }
+.note-content pre code { padding: 0; border: 0; color: inherit; background: none; }
 .note-content table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; overflow: hidden; border-radius: 12px; }
 .note-content th, .note-content td { padding: 11px 14px; border: 1px solid var(--line); text-align: left; }
-.note-content th { color: var(--cyan); background: var(--glow); }
+.note-content th { color: var(--text); background: var(--panel); }
 .note-content > iframe, .lotus-output-html-iframe { display: block; width: 100%; min-height: 520px; border: 0; background: white; }
-.htmlmogged-pdf-embed { min-height: 70vh; border-radius: 12px; }
-.callout { margin: 1.6rem 0; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent); border-left: 4px solid var(--violet); border-radius: 12px; background: var(--glow); }
-.callout-title { display: flex; gap: 8px; align-items: center; font-weight: 750; color: var(--violet); }
+.htmlmogged-pdf-embed { min-height: 70vh; border-radius: 4px; }
+.callout { margin: 1.6rem 0; padding: 14px 16px; border-left: 3px solid var(--accent); border-radius: 3px; background: var(--panel); }
+.callout-title { display: flex; gap: 8px; align-items: center; font-weight: 600; color: var(--text); }
 .callout-icon svg { width: 18px; height: 18px; }
 .task-list-item { list-style: none; }
 .task-list-item-checkbox { accent-color: var(--violet); }
@@ -495,35 +472,36 @@ article { padding: clamp(24px, 5vw, 64px); }
 .lotus-managed-display, .lotus-output-display { display: grid; gap: 8px; }
 .lotus-output-display { margin: 1.5rem 0; }
 .lotus-output-stream-label { color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.lotus-output-html-frame, .lotus-js-graph-frame { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.lotus-output-html-frame, .lotus-js-graph-frame { overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: white; }
 .lotus-js-graph-surface { width: 100%; margin: auto; color: #111; background: white; }
 .lotus-js-graph-svg { display: block; max-width: 100%; background: white; }
 .lotus-js-graph-print-snapshot { display: none; width: 100%; height: auto; background: white; }
 .lotus-js-graph-has-print-snapshot > .lotus-js-graph-print-snapshot { display: block; }
 .lotus-js-graph-has-print-snapshot > :not(.lotus-js-graph-print-snapshot) { display: none; }
-.lotus-output-image-viewport { overflow: auto; border-radius: 12px; background: white; }
+.lotus-output-image-viewport { overflow: auto; border-radius: 4px; background: white; }
 .lotus-output-image { display: block; max-width: 100% !important; height: auto !important; margin: auto; }
-.lotus-output-pre { overflow: auto; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #080c16; }
-.graph-card { padding: 18px; overflow: hidden; }
+.lotus-output-pre { overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); }
+.graph-card { padding: 16px; overflow: hidden; border-left: 1px solid var(--line); }
 .graph-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-.graph-heading h2 { margin: 0; font-size: 1.05rem; letter-spacing: -.02em; }
-.graph-heading span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .72rem; }
+.graph-heading h2 { margin: 0; font-size: 1rem; }
+.graph-heading span { color: var(--muted); font-size: .75rem; }
 #link-graph { width: 100%; min-height: 320px; touch-action: none; }
-.graph-edge { stroke: color-mix(in srgb, var(--muted) 42%, transparent); stroke-width: 1.2; }
+.graph-edge { stroke: var(--line); stroke-width: 1.2; }
 .graph-node { cursor: grab; outline: none; }
 .graph-node:active { cursor: grabbing; }
-.graph-node circle { fill: var(--panel-solid); stroke: var(--cyan); stroke-width: 2; transition: r .15s, fill .15s; }
-.graph-node:hover circle, .graph-node:focus circle { fill: var(--glow); stroke: var(--violet); r: 10; }
-.graph-node.current circle { fill: #7c3aed; stroke: #c4b5fd; stroke-width: 3; }
-.graph-node text { fill: var(--text); font: 600 10px ui-sans-serif, system-ui; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.graph-node circle { fill: var(--panel-solid); stroke: var(--muted); stroke-width: 1.5; }
+.graph-node:hover circle, .graph-node:focus circle { stroke: var(--accent); r: 10; }
+.graph-node.current circle { fill: var(--accent); stroke: var(--accent); stroke-width: 2; }
+.graph-node text { opacity: 0; fill: var(--text); font: 600 10px ui-sans-serif, system-ui; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.graph-node:hover text, .graph-node:focus text, .graph-node.current text { opacity: 1; }
 .graph-help { margin: 0; text-align: center; color: var(--muted); font-size: .75rem; }
 @media (max-width: 1120px) {
   .shell { grid-template-columns: 190px minmax(0, 1fr); }
-  .graph-card { position: relative; top: 0; grid-column: 1 / -1; }
+  .graph-card { display: none; }
 }
 @media (max-width: 720px) {
-  .shell { display: block; padding: 14px; }
-  .navigation, .graph-card { position: relative; top: 0; margin-bottom: 14px; }
+  .shell { display: block; }
+  .navigation { position: relative; top: 0; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .navigation nav { max-height: 180px; }
   article { padding: 24px; }
 }
@@ -539,8 +517,19 @@ const PAGE_SCRIPT = String.raw`
     // Some browsers deny storage to local file:// exports; the page still works without it.
   }
   if (savedTheme) root.dataset.theme = savedTheme;
-  document.getElementById("theme-toggle")?.addEventListener("click", () => {
+  else if (globalThis.matchMedia?.("(prefers-color-scheme: light)").matches) root.dataset.theme = "light";
+
+  const themeToggle = document.getElementById("theme-toggle");
+  function updateThemeToggle() {
+    const next = root.dataset.theme === "light" ? "Dark" : "Light";
+    if (!themeToggle) return;
+    themeToggle.textContent = next + " theme";
+    themeToggle.setAttribute("aria-label", "Switch to " + next.toLowerCase() + " theme");
+  }
+  updateThemeToggle();
+  themeToggle?.addEventListener("click", () => {
     root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+    updateThemeToggle();
     try {
       localStorage.setItem("htmlmogged-theme", root.dataset.theme);
     } catch {

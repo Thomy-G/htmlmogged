@@ -266,10 +266,16 @@ export class HtmlExporter {
 <body>
   <header class="topbar">
     <a class="brand" href="index.html">HTMLmogged</a>
-    <button id="theme-toggle" type="button">Light theme</button>
+    <div class="topbar-actions">
+      <div class="mobile-controls" aria-label="Page panels">
+        <button id="notes-toggle" type="button" aria-controls="notes-panel" aria-expanded="false">Notes</button>
+        <button id="graph-toggle" type="button" aria-controls="graph-panel" aria-expanded="false">Graph</button>
+      </div>
+      <button id="theme-toggle" type="button">Light theme</button>
+    </div>
   </header>
   <div class="shell">
-    <aside class="navigation">
+    <aside id="notes-panel" class="navigation">
       <label for="note-search">Notes</label>
       <input id="note-search" type="search" placeholder="Filter notes…" autocomplete="off">
       <nav>${navigation}</nav>
@@ -281,7 +287,7 @@ export class HtmlExporter {
         <div class="note-content">${content}</div>
       </article>
     </main>
-    <aside class="graph-card">
+    <aside id="graph-panel" class="graph-card">
       <div class="graph-heading">
         <div><p class="eyebrow">Vault map</p><h2>Interactive graph</h2></div>
         <span>${graph.nodes.length} nodes</span>
@@ -395,7 +401,9 @@ a:hover { text-decoration: underline; }
 }
 .brand { color: var(--text); font-weight: 600; }
 button, input { font: inherit; }
-#theme-toggle {
+.topbar-actions, .mobile-controls { display: flex; align-items: center; gap: 6px; }
+.mobile-controls { display: none; }
+#theme-toggle, .mobile-controls button {
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -496,14 +504,29 @@ article { width: min(760px, 100%); margin: 0 auto; padding: 48px 32px 80px; }
 .graph-node:hover text, .graph-node:focus text, .graph-node.current text { opacity: 1; }
 .graph-help { margin: 0; text-align: center; color: var(--muted); font-size: .75rem; }
 @media (max-width: 1120px) {
-  .shell { grid-template-columns: 190px minmax(0, 1fr); }
-  .graph-card { display: none; }
+  .shell { display: block; }
+  .mobile-controls { display: flex; }
+  .navigation, .graph-card {
+    display: none;
+    position: fixed;
+    top: 48px;
+    bottom: 0;
+    z-index: 9;
+    width: min(320px, 100%);
+    height: auto;
+    overflow: auto;
+    box-shadow: 0 12px 32px #0006;
+  }
+  .navigation { left: 0; }
+  .graph-card { right: 0; }
+  body[data-panel="notes"] .navigation, body[data-panel="graph"] .graph-card { display: block; }
 }
 @media (max-width: 720px) {
-  .shell { display: block; }
-  .navigation { position: relative; top: 0; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  .navigation nav { max-height: 180px; }
   article { padding: 24px; }
+}
+@media (max-width: 420px) {
+  .topbar { padding: 0 8px; }
+  #theme-toggle, .mobile-controls button { padding: 0 7px; }
 }
 `;
 
@@ -535,6 +558,21 @@ const PAGE_SCRIPT = String.raw`
     } catch {
       // Keep the theme for this page even when local storage is unavailable.
     }
+  });
+
+  const panelButtons = ["notes", "graph"].map((panel) => ({
+    panel,
+    button: document.getElementById(panel + "-toggle"),
+  }));
+  function setPanel(panel) {
+    document.body.dataset.panel = document.body.dataset.panel === panel ? "" : panel;
+    panelButtons.forEach(({ panel: name, button }) => {
+      button?.setAttribute("aria-expanded", String(document.body.dataset.panel === name));
+    });
+  }
+  panelButtons.forEach(({ panel, button }) => button?.addEventListener("click", () => setPanel(panel)));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.dataset.panel) setPanel(document.body.dataset.panel);
   });
 
   const search = document.getElementById("note-search");

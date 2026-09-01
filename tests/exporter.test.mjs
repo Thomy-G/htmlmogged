@@ -49,18 +49,27 @@ const graphElement = {
 	setAttribute: () => undefined,
 };
 const rootElement = { dataset: {} };
+const bodyElement = { dataset: {} };
 const themeListeners = new Map();
 const themeElement = {
 	addEventListener: (type, listener) => themeListeners.set(type, listener),
 	setAttribute: () => undefined,
 	textContent: "",
 };
+const notesListeners = new Map();
+const notesElement = {
+	addEventListener: (type, listener) => notesListeners.set(type, listener),
+	setAttribute: () => undefined,
+};
 assert.doesNotThrow(() => new vm.Script(pageScript).runInNewContext({
 	document: {
 		documentElement: rootElement,
+		body: bodyElement,
+		addEventListener: () => undefined,
 		getElementById: (id) => id === "graph-data"
 			? { textContent: '{"nodes":[],"edges":[],"current":""}' }
-			: id === "link-graph" ? graphElement : id === "theme-toggle" ? themeElement : null,
+			: id === "link-graph" ? graphElement
+				: id === "theme-toggle" ? themeElement : id === "notes-toggle" ? notesElement : null,
 	},
 	localStorage: { getItem: () => { throw new Error("storage denied"); } },
 }), "graphs initialize when local storage is unavailable");
@@ -69,6 +78,8 @@ assert.equal(themeElement.textContent, "Light theme");
 themeListeners.get("click")();
 assert.equal(rootElement.dataset.theme, "light");
 assert.equal(themeElement.textContent, "Dark theme");
+notesListeners.get("click")();
+assert.equal(bodyElement.dataset.panel, "notes");
 
 const testRoot = await mkdtemp(path.join(tmpdir(), "htmlmogged-test-"));
 try {

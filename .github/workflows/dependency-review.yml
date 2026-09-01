@@ -10,4 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/dependency-review-action@v5
+      - name: Check dependency graph
+        id: dependency-graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/dependency-graph/sbom" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Dependency Graph is disabled; skipping dependency review."
+          fi
+      - if: steps.dependency-graph.outputs.enabled == 'true'
+        uses: actions/dependency-review-action@v5

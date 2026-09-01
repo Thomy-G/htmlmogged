@@ -109,7 +109,7 @@ try {
 	const managed = path.join(testRoot, "managed");
 	const first = await beginOutputTransaction(managed);
 	await writeFile(path.join(first.staging, "stale.html"), "stale");
-	await writeOutputMarker(first.staging, ["stale.html"]);
+	await writeOutputMarker(first.staging, ["stale.html", "search-index.js"]);
 	await first.commit();
 	assert.match(await readFile(path.join(managed, ".htmlmogged.json"), "utf8"), /"generator": "htmlmogged"/u);
 

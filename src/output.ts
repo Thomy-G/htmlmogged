@@ -83,7 +83,7 @@ async function readMarker(destination: string): Promise<OutputMarker> {
       marker.generator !== "htmlmogged"
       || marker.version !== 1
       || !Array.isArray(marker.pages)
-      || marker.pages.some((page) => typeof page !== "string" || path.basename(page) !== page || !page.endsWith(".html"))
+      || marker.pages.some((page) => typeof page !== "string" || path.basename(page) !== page || !/\.(?:html|js)$/u.test(page))
     ) throw new Error("invalid marker");
     return marker as OutputMarker;
   } catch {

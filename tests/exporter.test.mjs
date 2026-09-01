@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 
 import { beginOutputTransaction, writeOutputMarker } from "../src/output.ts";
 import { buildGraph, escapeHtml, linkFragment, makeOutputMap, matchesExportFilters, parseList, safeJson } from "../src/pure.ts";
@@ -37,6 +38,26 @@ assert.equal(matchesExportFilters("Public/Note.md", ["#publish"], filters), true
 assert.equal(matchesExportFilters("Public/private/Note.md", ["publish"], filters), false);
 assert.equal(matchesExportFilters("Public/Note.md", ["publish", "draft"], filters), false);
 assert.equal(matchesExportFilters("Elsewhere/Note.md", ["publish"], filters), false);
+
+const exporterSource = await readFile(new URL("../src/exporter.ts", import.meta.url), "utf8");
+const pageScript = exporterSource.match(/const PAGE_SCRIPT = String\.raw`([\s\S]*)`;\s*$/u)?.[1];
+assert.ok(pageScript, "exported page script exists");
+const graphListeners = new Map();
+const graphElement = {
+	addEventListener: (type, listener) => graphListeners.set(type, listener),
+	append: () => undefined,
+	setAttribute: () => undefined,
+};
+assert.doesNotThrow(() => new vm.Script(pageScript).runInNewContext({
+	document: {
+		documentElement: { dataset: {} },
+		getElementById: (id) => id === "graph-data"
+			? { textContent: '{"nodes":[],"edges":[],"current":""}' }
+			: id === "link-graph" ? graphElement : null,
+	},
+	localStorage: { getItem: () => { throw new Error("storage denied"); } },
+}), "graphs initialize when local storage is unavailable");
+assert.ok(graphListeners.has("wheel"), "graph interaction is installed");
 
 const testRoot = await mkdtemp(path.join(tmpdir(), "htmlmogged-test-"));
 try {

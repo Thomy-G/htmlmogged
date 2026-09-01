@@ -532,11 +532,20 @@ article { padding: clamp(24px, 5vw, 64px); }
 const PAGE_SCRIPT = String.raw`
 (() => {
   const root = document.documentElement;
-  const savedTheme = localStorage.getItem("htmlmogged-theme");
+  let savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem("htmlmogged-theme");
+  } catch {
+    // Some browsers deny storage to local file:// exports; the page still works without it.
+  }
   if (savedTheme) root.dataset.theme = savedTheme;
   document.getElementById("theme-toggle")?.addEventListener("click", () => {
     root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
-    localStorage.setItem("htmlmogged-theme", root.dataset.theme);
+    try {
+      localStorage.setItem("htmlmogged-theme", root.dataset.theme);
+    } catch {
+      // Keep the theme for this page even when local storage is unavailable.
+    }
   });
 
   const search = document.getElementById("note-search");
@@ -633,9 +642,15 @@ const PAGE_SCRIPT = String.raw`
       updateEdges();
     });
     group.addEventListener("pointerup", (event) => {
-      group.releasePointerCapture(event.pointerId);
-      if (!dragged) window.location.href = node.href;
+      if (group.hasPointerCapture(event.pointerId)) group.releasePointerCapture(event.pointerId);
       start = null;
+    });
+    group.addEventListener("pointercancel", () => {
+      start = null;
+      dragged = true;
+    });
+    group.addEventListener("click", () => {
+      if (!dragged) window.location.href = node.href;
     });
     group.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") window.location.href = node.href;

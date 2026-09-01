@@ -19,6 +19,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run verify:version -- "$GITHUB_REF_NAME"
       - run: npm run check
       - name: Attest release files
         uses: actions/attest@v4

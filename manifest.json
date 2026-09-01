@@ -2,9 +2,9 @@
   "id": "htmlmogged",
   "name": "htmlmogged",
   "version": "1.0.0",
-  "minAppVersion": "1.12.7",
+  "minAppVersion": "1.13.1",
   "description": "Export Markdown notes as polished HTML with navigation and an interactive link graph.",
-  "author": "racks0nracks",
-  "authorUrl": "https://github.com/racks0nracks",
+  "author": "rackquiem",
+  "authorUrl": "https://github.com/rackquiem",
   "isDesktopOnly": true
 }

@@ -4,7 +4,7 @@
   "description": "Export Markdown notes as polished HTML with navigation and an interactive link graph.",
   "main": "main.js",
   "type": "module",
-  "author": "racks0nracks",
+  "author": "rackquiem",
   "engines": {
     "node": ">=22.6.0"
   },
@@ -13,7 +13,8 @@
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "lint": "eslint .",
     "test": "node --experimental-strip-types tests/exporter.test.mjs",
-    "check": "npm run lint && npm test && npm run build"
+    "verify:version": "node scripts/verify-version.mjs",
+    "check": "npm run lint && npm test && npm run verify:version && npm run build"
   },
   "license": "UNLICENSED",
   "devDependencies": {

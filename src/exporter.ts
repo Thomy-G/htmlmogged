@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 
-import { prepareOutputDirectory, writeOutputMarker } from "./output";
+import { beginOutputTransaction, writeOutputMarker } from "./output";
 import { buildGraph, escapeHtml, linkFragment, makeOutputMap, safeJson, slug } from "./pure";
 
 export interface ExportResult {
@@ -13,42 +13,55 @@ export interface ExportResult {
   startPage: string;
 }
 
-interface ImageResource {
+interface VaultResource {
   file: TFile;
   mime: string;
+  output?: string;
 }
 
 export class HtmlExporter {
+  private readonly resourceData = new Map<string, Promise<string>>();
+  private readonly resourceWrites = new Map<string, Promise<void>>();
+
   constructor(private readonly app: App) {}
 
-  async export(files: TFile[], destination: string): Promise<ExportResult> {
+  async export(files: TFile[], destination: string, landingPath?: string): Promise<ExportResult> {
     if (files.length === 0) throw new Error("there are no Markdown notes to export");
 
-    const target = await prepareOutputDirectory(destination);
+    const transaction = await beginOutputTransaction(destination);
+    const target = transaction.staging;
     const notes = files.map((file) => ({ path: file.path, basename: file.basename }));
     const outputs = makeOutputMap(notes);
     const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
     const navigation = this.navigation(sortedFiles, outputs);
-    const images = this.imageResources();
+    const resources = this.vaultResources();
 
-    for (const file of sortedFiles) {
-      const output = outputs.get(file.path);
-      if (!output) continue;
-      const content = await this.render(file, outputs, images);
-      const graph = buildGraph(notes, this.app.metadataCache.resolvedLinks, outputs, file.path);
-      const title = this.title(file);
-      await writeFile(
-        path.join(target, output),
-        this.page(title, content, navigation, graph),
-        "utf8",
-      );
+    try {
+      for (const file of sortedFiles) {
+        const output = outputs.get(file.path);
+        if (!output) continue;
+        const content = await this.render(file, outputs, resources, target);
+        const graph = buildGraph(notes, this.app.metadataCache.resolvedLinks, outputs, file.path);
+        const title = this.title(file);
+        await writeFile(
+          path.join(target, output),
+          this.page(title, content, navigation, graph),
+          "utf8",
+        );
+      }
+
+      const landing = sortedFiles.find((file) => file.path === landingPath)
+        ?? sortedFiles.find((file) => file.basename.toLowerCase() === "showcase")
+        ?? sortedFiles[0];
+      const startPage = landing ? outputs.get(landing.path) ?? "index.html" : "index.html";
+      await writeFile(path.join(target, "index.html"), redirectPage(startPage), "utf8");
+      await writeOutputMarker(target, ["index.html", ...outputs.values()]);
+      await transaction.commit();
+      return { destination: transaction.destination, pagesWritten: sortedFiles.length + 1, startPage };
+    } catch (error) {
+      await transaction.abort();
+      throw error;
     }
-
-    const showcase = sortedFiles.find((file) => file.basename.toLowerCase() === "showcase") ?? sortedFiles[0];
-    const startPage = showcase ? outputs.get(showcase.path) ?? "index.html" : "index.html";
-    await writeFile(path.join(target, "index.html"), redirectPage(startPage), "utf8");
-    await writeOutputMarker(target, ["index.html", ...outputs.values()]);
-    return { destination: target, pagesWritten: sortedFiles.length + 1, startPage };
   }
 
   private title(file: TFile): string {
@@ -59,7 +72,8 @@ export class HtmlExporter {
   private async render(
     file: TFile,
     outputs: ReadonlyMap<string, string>,
-    images: ReadonlyMap<string, ImageResource>,
+    resources: ReadonlyMap<string, VaultResource>,
+    target: string,
   ): Promise<string> {
     const component = new Component();
     const host = document.body.createDiv({ cls: ["markdown-rendered", "htmlmogged-render-host"] });
@@ -74,6 +88,7 @@ export class HtmlExporter {
       if (mermaidButtons.length > 0 && !await waitFor(() => !host.querySelector(".mermaid-guard-actions"), 5000)) {
         throw new Error(`Mermaid did not render in ${file.path}`);
       }
+      await waitFor(() => !host.querySelector(".lotus-output-display[data-lotus-render-state=\"pending\"]"), 5000);
       await waitFor(() => !host.querySelector(".lotus-js-graph-surface:empty"), 5000);
       await delay(100);
 
@@ -98,14 +113,24 @@ export class HtmlExporter {
         if (output) {
           link.setAttribute("href", `${output}${linkFragment(subpath)}`);
           link.target = "_self";
+        } else if (target) {
+          link.setAttribute("href", this.app.vault.getResourcePath(target));
         }
       });
-      await this.inlineImages(host, images);
+      await this.makeResourcesPortable(host, resources, target);
       host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((checkbox) => {
         checkbox.toggleAttribute("checked", checkbox.checked);
         checkbox.disabled = true;
       });
-      return host.innerHTML;
+      const exported = host.cloneNode(true);
+      if (!exported.instanceOf(HTMLElement)) throw new Error(`could not serialize ${file.path}`);
+      exported.querySelectorAll<HTMLIFrameElement>("iframe[data-htmlmogged-pdf-src]").forEach((frame) => {
+        const source = frame.dataset.htmlmoggedPdfSrc;
+        if (!source) return;
+        frame.src = source;
+        delete frame.dataset.htmlmoggedPdfSrc;
+      });
+      return exported.innerHTML;
     } finally {
       component.unload();
       host.remove();
@@ -138,25 +163,81 @@ export class HtmlExporter {
     });
   }
 
-  private imageResources(): Map<string, ImageResource> {
-    const resources = new Map<string, ImageResource>();
-    for (const file of this.app.vault.getFiles()) {
-      const mime = imageMime(file.extension);
+  private vaultResources(): Map<string, VaultResource> {
+    const resources = new Map<string, VaultResource>();
+    const used = new Set<string>();
+    for (const file of [...this.app.vault.getFiles()].sort((a, b) => a.path.localeCompare(b.path))) {
+      const mime = resourceMime(file.extension);
       if (!mime) continue;
-      resources.set(normalizeResource(this.app.vault.getResourcePath(file)), { file, mime });
+      let output: string | undefined;
+      if (!mime.startsWith("image/")) {
+        const stem = slug(file.path.slice(0, -(file.extension.length + 1)).replaceAll("/", "--"));
+        let name = `${stem}.${file.extension.toLowerCase()}`;
+        let suffix = 2;
+        while (used.has(name)) name = `${stem}-${suffix++}.${file.extension.toLowerCase()}`;
+        used.add(name);
+        output = `assets/${name}`;
+      }
+      const resource = { file, mime, output };
+      resources.set(normalizeResource(this.app.vault.getResourcePath(file)), resource);
+      resources.set(normalizeResource(file.path), resource);
     }
     return resources;
   }
 
-  private async inlineImages(host: HTMLElement, resources: ReadonlyMap<string, ImageResource>): Promise<void> {
-    await Promise.all(Array.from(host.querySelectorAll<HTMLImageElement>("img[src]"), async (image) => {
-      const source = image.getAttribute("src");
-      if (!source || source.startsWith("data:")) return;
-      const resource = resources.get(normalizeResource(source)) ?? resources.get(normalizeResource(image.src));
-      if (!resource) return;
-      const data = Buffer.from(await this.app.vault.readBinary(resource.file)).toString("base64");
-      image.setAttribute("src", `data:${resource.mime};base64,${data}`);
+  private async makeResourcesPortable(
+    host: HTMLElement,
+    resources: ReadonlyMap<string, VaultResource>,
+    target: string,
+  ): Promise<void> {
+    const pdfEmbeds = Array.from(host.querySelectorAll<HTMLElement>(".internal-embed.pdf-embed[src]"));
+    await Promise.all(pdfEmbeds.map(async (embed) => {
+      const source = embed.getAttribute("src");
+      const resource = source ? resources.get(normalizeResource(source)) : undefined;
+      if (!source || resource?.mime !== "application/pdf") return;
+      const frame = createEl("iframe");
+      frame.className = "htmlmogged-pdf-embed";
+      frame.title = embed.getAttribute("alt") ?? resource.file.basename;
+      frame.dataset.htmlmoggedPdfSrc = await this.portableResource(resource, target);
+      embed.replaceWith(frame);
     }));
+    const targets = [
+      ...Array.from(host.querySelectorAll<HTMLElement>("img[src], audio[src], video[src], source[src], embed[src]"), (element) => ({ element, attribute: "src" })),
+      ...Array.from(host.querySelectorAll<HTMLElement>("object[data]"), (element) => ({ element, attribute: "data" })),
+      ...Array.from(host.querySelectorAll<HTMLAnchorElement>("a[href]"), (element) => ({ element, attribute: "href" })),
+    ];
+    await Promise.all(targets.map(async ({ element, attribute }) => {
+      const source = element.getAttribute(attribute);
+      if (!source || source.startsWith("data:")) return;
+      const absolute = attribute === "href" && element.instanceOf(HTMLAnchorElement) ? element.href : source;
+      const resource = resources.get(normalizeResource(source)) ?? resources.get(normalizeResource(absolute));
+      if (!resource) return;
+      element.setAttribute(attribute, await this.portableResource(resource, target));
+      if (element.instanceOf(HTMLAnchorElement)) element.download = resource.file.name;
+    }));
+  }
+
+  private async portableResource(resource: VaultResource, target: string): Promise<string> {
+    if (resource.output) {
+      let write = this.resourceWrites.get(resource.file.path);
+      if (!write) {
+        write = this.app.vault.readBinary(resource.file).then(async (data) => {
+          await mkdir(path.join(target, "assets"), { recursive: true });
+          await writeFile(path.join(target, resource.output ?? ""), Buffer.from(data));
+        });
+        this.resourceWrites.set(resource.file.path, write);
+      }
+      await write;
+      return resource.output;
+    }
+
+    let dataUrl = this.resourceData.get(resource.file.path);
+    if (!dataUrl) {
+      dataUrl = this.app.vault.readBinary(resource.file).then((data) =>
+        `data:${resource.mime};base64,${Buffer.from(data).toString("base64")}`);
+      this.resourceData.set(resource.file.path, dataUrl);
+    }
+    return dataUrl;
   }
 
   private navigation(files: TFile[], outputs: ReadonlyMap<string, string>): string {
@@ -240,7 +321,7 @@ function normalizeResource(value: string): string {
   }
 }
 
-function imageMime(extension: string): string | undefined {
+function resourceMime(extension: string): string | undefined {
   return ({
     avif: "image/avif",
     bmp: "image/bmp",
@@ -250,6 +331,17 @@ function imageMime(extension: string): string | undefined {
     png: "image/png",
     svg: "image/svg+xml",
     webp: "image/webp",
+    flac: "audio/flac",
+    m4a: "audio/mp4",
+    mp3: "audio/mpeg",
+    oga: "audio/ogg",
+    ogg: "audio/ogg",
+    wav: "audio/wav",
+    mov: "video/quicktime",
+    mp4: "video/mp4",
+    ogv: "video/ogg",
+    webm: "video/webm",
+    pdf: "application/pdf",
   } as Record<string, string>)[extension.toLowerCase()];
 }
 
@@ -392,6 +484,7 @@ article { padding: clamp(24px, 5vw, 64px); }
 .note-content th, .note-content td { padding: 11px 14px; border: 1px solid var(--line); text-align: left; }
 .note-content th { color: var(--cyan); background: var(--glow); }
 .note-content > iframe, .lotus-output-html-iframe { display: block; width: 100%; min-height: 520px; border: 0; background: white; }
+.htmlmogged-pdf-embed { min-height: 70vh; border-radius: 12px; }
 .callout { margin: 1.6rem 0; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent); border-left: 4px solid var(--violet); border-radius: 12px; background: var(--glow); }
 .callout-title { display: flex; gap: 8px; align-items: center; font-weight: 750; color: var(--violet); }
 .callout-icon svg { width: 18px; height: 18px; }

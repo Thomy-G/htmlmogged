@@ -20,6 +20,13 @@ export interface GraphData {
   current: string;
 }
 
+export interface ExportFilters {
+  includeFolders: readonly string[];
+  excludeFolders: readonly string[];
+  includeTags: readonly string[];
+  excludeTags: readonly string[];
+}
+
 export function slug(value: string): string {
   return value
     .normalize("NFKD")
@@ -85,4 +92,23 @@ export function linkFragment(subpath: string): string {
   return subpath.startsWith("^")
     ? `#block-${slug(subpath.slice(1))}`
     : `#${slug(subpath)}`;
+}
+
+export function parseList(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+export function matchesExportFilters(path: string, tags: readonly string[], filters: ExportFilters): boolean {
+  const normalizedPath = path.replaceAll("\\", "/").toLowerCase();
+  const normalizedTags = new Set(tags.map((tag) => tag.replace(/^#/u, "").toLowerCase()));
+  const inFolder = (folder: string) => {
+    const normalized = folder.replaceAll("\\", "/").replace(/^\/+|\/+$/gu, "").toLowerCase();
+    return normalizedPath.startsWith(`${normalized}/`);
+  };
+  const hasTag = (tag: string) => normalizedTags.has(tag.replace(/^#/u, "").toLowerCase());
+
+  return !filters.excludeFolders.some(inFolder)
+    && !filters.excludeTags.some(hasTag)
+    && (filters.includeFolders.length === 0 || filters.includeFolders.some(inFolder))
+    && (filters.includeTags.length === 0 || filters.includeTags.some(hasTag));
 }

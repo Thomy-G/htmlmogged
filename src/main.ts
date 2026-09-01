@@ -1,14 +1,27 @@
 import path from "node:path";
 
-import { FileSystemAdapter, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { FileSystemAdapter, getAllTags, Notice, Plugin, PluginSettingTab, TFile } from "obsidian";
 
 import { HtmlExporter, type ExportResult } from "./exporter";
+import { matchesExportFilters, parseList } from "./pure";
 
 interface HtmlmoggedSettings {
   outputDirectory: string;
+  landingNote: string;
+  includeFolders: string;
+  excludeFolders: string;
+  includeTags: string;
+  excludeTags: string;
 }
 
-const DEFAULT_SETTINGS: HtmlmoggedSettings = { outputDirectory: "" };
+const DEFAULT_SETTINGS: HtmlmoggedSettings = {
+  outputDirectory: "",
+  landingNote: "",
+  includeFolders: "",
+  excludeFolders: "",
+  includeTags: "",
+  excludeTags: "",
+};
 
 export default class HtmlmoggedPlugin extends Plugin {
   settings: HtmlmoggedSettings = DEFAULT_SETTINGS;
@@ -30,21 +43,42 @@ export default class HtmlmoggedPlugin extends Plugin {
   }
 
   async exportVault(destination?: string): Promise<ExportResult> {
-    return this.exportFiles(this.app.vault.getMarkdownFiles(), destination);
+    const filters = {
+      includeFolders: parseList(this.settings.includeFolders),
+      excludeFolders: parseList(this.settings.excludeFolders),
+      includeTags: parseList(this.settings.includeTags),
+      excludeTags: parseList(this.settings.excludeTags),
+    };
+    const files = this.app.vault.getMarkdownFiles().filter((file) => {
+      const cache = this.app.metadataCache.getFileCache(file);
+      return matchesExportFilters(file.path, cache ? getAllTags(cache) ?? [] : [], filters);
+    });
+    return this.exportFiles(files, destination);
   }
 
   private async exportFiles(files: TFile[], destination?: string): Promise<ExportResult> {
     if (this.exporting) throw new Error("an htmlmogged export is already running");
     this.exporting = true;
     try {
-      const target = destination?.trim() || this.settings.outputDirectory || this.defaultOutputDirectory();
+      const target = destination?.trim() || this.settings.outputDirectory.trim() || this.defaultOutputDirectory();
+      const landingPath = this.resolveLandingNote(files);
       new Notice(`htmlmogged is exporting ${files.length} note${files.length === 1 ? "" : "s"}…`);
-      const result = await new HtmlExporter(this.app).export(files, target);
+      const result = await new HtmlExporter(this.app).export(files, target, landingPath);
       new Notice(`htmlmogged wrote ${result.pagesWritten} pages to ${result.destination}`);
       return result;
     } finally {
       this.exporting = false;
     }
+  }
+
+  private resolveLandingNote(files: readonly TFile[]): string | undefined {
+    const link = this.settings.landingNote.trim();
+    if (!link) return undefined;
+    const file = this.app.metadataCache.getFirstLinkpathDest(link, "");
+    if (!file || !files.some((candidate) => candidate.path === file.path)) {
+      throw new Error(`landing note is missing or excluded: ${link}`);
+    }
+    return file.path;
   }
 
   private defaultOutputDirectory(): string {
@@ -61,22 +95,8 @@ export default class HtmlmoggedPlugin extends Plugin {
 }
 
 class HtmlmoggedSettingTab extends PluginSettingTab {
-  constructor(private readonly htmlmogged: HtmlmoggedPlugin) {
+  constructor(htmlmogged: HtmlmoggedPlugin) {
     super(htmlmogged.app, htmlmogged);
-  }
-
-  display(): void {
-    this.containerEl.empty();
-    new Setting(this.containerEl)
-      .setName("Output folder")
-      .setDesc("Absolute folder for generated HTML. Leave blank to use .htmlmogged in this vault.")
-      .addText((text) => text
-        .setPlaceholder("/absolute/path/to/export")
-        .setValue(this.htmlmogged.settings.outputDirectory)
-        .onChange(async (value) => {
-          this.htmlmogged.settings.outputDirectory = value.trim();
-          await this.htmlmogged.saveData(this.htmlmogged.settings);
-        }));
   }
 
   getSettingDefinitions() {
@@ -88,6 +108,26 @@ class HtmlmoggedSettingTab extends PluginSettingTab {
         key: "outputDirectory",
         placeholder: "/absolute/path/to/export",
       },
+    }, {
+      name: "Landing note",
+      desc: "Note to open from index.html. Leave blank to prefer showcase, then the first note.",
+      control: { type: "text" as const, key: "landingNote", placeholder: "Home" },
+    }, {
+      name: "Included folders",
+      desc: "Comma-separated vault folders. Leave blank to include every folder.",
+      control: { type: "text" as const, key: "includeFolders", placeholder: "Public, projects/site" },
+    }, {
+      name: "Excluded folders",
+      desc: "Comma-separated vault folders to leave out of the export.",
+      control: { type: "text" as const, key: "excludeFolders", placeholder: "Private, templates" },
+    }, {
+      name: "Included tags",
+      desc: "Comma-separated tags. Leave blank to include notes with any tag.",
+      control: { type: "text" as const, key: "includeTags", placeholder: "Publish, docs" },
+    }, {
+      name: "Excluded tags",
+      desc: "Comma-separated tags to leave out of the export.",
+      control: { type: "text" as const, key: "excludeTags", placeholder: "Private, draft" },
     }];
   }
 }

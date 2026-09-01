@@ -5,7 +5,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 import { beginOutputTransaction, writeOutputMarker } from "../src/output.ts";
-import { buildGraph, escapeHtml, linkFragment, makeOutputMap, matchesExportFilters, parseList, safeJson } from "../src/pure.ts";
+import { buildGraph, escapeHtml, findBacklinks, linkFragment, makeOutputMap, matchesExportFilters, parseList, safeJson } from "../src/pure.ts";
 
 const notes = [
   { path: "A B.md", basename: "A B" },
@@ -23,6 +23,10 @@ const graph = buildGraph(notes, {
   "Graph Lab.md": { "A B.md": 1, "missing.md": 1 },
 }, outputs, "Graph Lab.md");
 assert.deepEqual(graph.edges, [{ source: "Graph Lab.md", target: "A B.md" }]);
+assert.deepEqual(findBacklinks(notes, {
+	"A B.md": { "Graph Lab.md": 1 },
+	"Graph Lab.md": { "Graph Lab.md": 1 },
+}, "Graph Lab.md"), [notes[0]]);
 assert.equal(escapeHtml('<a "b">'), "&lt;a &quot;b&quot;&gt;");
 assert.equal(safeJson({ value: "</script>" }), '{"value":"\\u003c/script>"}');
 assert.equal(linkFragment("linked lists"), "#linked-lists");

@@ -2,10 +2,10 @@ import { Buffer } from "node:buffer";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { App, Component, MarkdownRenderer, TFile } from "obsidian";
+import { App, Component, getAllTags, MarkdownRenderer, TFile } from "obsidian";
 
 import { beginOutputTransaction, writeOutputMarker } from "./output";
-import { buildGraph, escapeHtml, linkFragment, makeOutputMap, safeJson, slug } from "./pure";
+import { buildGraph, escapeHtml, findBacklinks, linkFragment, makeOutputMap, safeJson, slug } from "./pure";
 
 export interface ExportResult {
   destination: string;
@@ -52,9 +52,10 @@ export class HtmlExporter {
         const content = await this.render(file, outputs, resources, target);
         const graph = buildGraph(notes, this.app.metadataCache.resolvedLinks, outputs, file.path);
         const title = this.title(file);
+        const footer = this.noteFooter(file, sortedFiles, outputs);
         await writeFile(
           path.join(target, output),
-          this.page(title, content, navigation, graph),
+          this.page(title, content, navigation, graph, footer),
           "utf8",
         );
       }
@@ -257,11 +258,25 @@ export class HtmlExporter {
     }).join("\n");
   }
 
+  private noteFooter(file: TFile, files: TFile[], outputs: ReadonlyMap<string, string>): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const tags = [...new Set(cache ? getAllTags(cache) ?? [] : [])].sort((a, b) => a.localeCompare(b));
+    const backlinks = findBacklinks(files, this.app.metadataCache.resolvedLinks, file.path);
+    if (tags.length === 0 && backlinks.length === 0) return "";
+
+    const tagList = tags.length === 0 ? "" : `
+      <section><h2>Tags</h2><div class="tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div></section>`;
+    const backlinkList = backlinks.length === 0 ? "" : `
+      <section><h2>Linked mentions</h2><ul>${backlinks.map((note) => `<li><a href="${escapeHtml(outputs.get(note.path) ?? "index.html")}">${escapeHtml(this.title(note))}</a></li>`).join("")}</ul></section>`;
+    return `<footer class="note-footer">${tagList}${backlinkList}</footer>`;
+  }
+
   private page(
     title: string,
     content: string,
     navigation: string,
     graph: ReturnType<typeof buildGraph>,
+    footer: string,
   ): string {
     return `<!doctype html>
 <html lang="en">
@@ -294,6 +309,7 @@ export class HtmlExporter {
         <p class="eyebrow">Exported note</p>
         <h1 class="page-title">${escapeHtml(title)}</h1>
         <div class="note-content">${content}</div>
+        ${footer}
       </article>
     </main>
     <aside id="graph-panel" class="graph-card">
@@ -479,6 +495,11 @@ article { width: min(760px, 100%); margin: 0 auto; padding: 48px 32px 80px; }
 .note-content th, .note-content td { padding: 11px 14px; border: 1px solid var(--line); text-align: left; }
 .note-content th { color: var(--text); background: var(--panel); }
 .note-content > iframe, .lotus-output-html-iframe { display: block; width: 100%; min-height: 520px; border: 0; background: white; }
+.note-footer { display: grid; gap: 20px; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.note-footer h2 { margin: 0 0 10px; font-size: .9rem; }
+.note-footer ul { margin: 0; padding-left: 20px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tags span { padding: 3px 7px; border-radius: 4px; color: var(--muted); background: var(--panel); font-size: .8rem; }
 .htmlmogged-pdf-embed { min-height: 70vh; border-radius: 4px; }
 .callout { margin: 1.6rem 0; padding: 14px 16px; border-left: 3px solid var(--accent); border-radius: 3px; background: var(--panel); }
 .callout-title { display: flex; gap: 8px; align-items: center; font-weight: 600; color: var(--text); }

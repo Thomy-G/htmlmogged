@@ -73,6 +73,14 @@ export function buildGraph(
   return { nodes, edges, current };
 }
 
+export function findBacklinks<T extends NoteRef>(
+  notes: readonly T[],
+  resolvedLinks: Readonly<Record<string, Readonly<Record<string, number>>>>,
+  current: string,
+): T[] {
+  return notes.filter((note) => note.path !== current && Boolean(resolvedLinks[note.path]?.[current]));
+}
+
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",

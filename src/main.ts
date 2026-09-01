@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { FileSystemAdapter, getAllTags, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { FileSystemAdapter, getAllTags, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, ToggleComponent } from "obsidian";
 
 import { HtmlExporter, type ExportResult } from "./exporter";
 import { matchesExportFilters, parseList } from "./pure";
@@ -137,8 +137,17 @@ class NotePickerModal extends Modal {
       if (active) selected.add(active.path);
     }
 
-    let rows: { file: TFile; setting: Setting }[] = [];
+    let rows: { file: TFile; setting: Setting; toggle: ToggleComponent }[] = [];
     let exportButton: { setDisabled(disabled: boolean): unknown };
+    const replaceSelection = (selectAll: boolean) => {
+      selected.clear();
+      if (selectAll) this.files.forEach((file) => selected.add(file.path));
+      rows.forEach(({ file, toggle }) => {
+        void toggle.setValue(selected.has(file.path));
+      });
+      controls.setDesc(`${selected.size} selected`);
+      exportButton.setDisabled(selected.size === 0);
+    };
     const controls = new Setting(this.contentEl)
       .setName("Choose notes")
       .setDesc(`${selected.size} selected`)
@@ -150,6 +159,14 @@ class NotePickerModal extends Modal {
             setting.settingEl.hidden = !file.path.toLowerCase().includes(query);
           });
         }))
+      .addButton((button) => button
+        .setButtonText("All")
+        .setTooltip("Select all notes")
+        .onClick(() => replaceSelection(true)))
+      .addButton((button) => button
+        .setButtonText("Clear")
+        .setTooltip("Clear selection")
+        .onClick(() => replaceSelection(false)))
       .addButton((button) => {
         exportButton = button
           .setButtonText("Export")
@@ -164,18 +181,20 @@ class NotePickerModal extends Modal {
 
     const list = this.contentEl.createDiv({ cls: "htmlmogged-note-picker" });
     rows = this.files.map((file) => {
+      let toggleComponent: ToggleComponent;
       const setting = new Setting(list)
         .setName(file.basename)
         .setDesc(file.path)
-        .addToggle((toggle) => toggle
-          .setValue(selected.has(file.path))
-          .onChange((value) => {
+        .addToggle((toggle) => {
+          toggleComponent = toggle;
+          toggle.setValue(selected.has(file.path)).onChange((value) => {
             if (value) selected.add(file.path);
             else selected.delete(file.path);
             controls.setDesc(`${selected.size} selected`);
             exportButton.setDisabled(selected.size === 0);
-          }));
-      return { file, setting };
+          });
+        });
+      return { file, setting, toggle: toggleComponent! };
     });
   }
 

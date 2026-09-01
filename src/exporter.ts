@@ -2,10 +2,10 @@ import { Buffer } from "node:buffer";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { App, Component, MarkdownRenderer, TFile } from "obsidian";
+import { App, Component, getAllTags, MarkdownRenderer, TFile } from "obsidian";
 
 import { beginOutputTransaction, writeOutputMarker } from "./output";
-import { buildGraph, escapeHtml, linkFragment, makeOutputMap, safeJson, slug } from "./pure";
+import { buildGraph, escapeHtml, findBacklinks, linkFragment, makeOutputMap, safeJson, slug } from "./pure";
 
 export interface ExportResult {
   destination: string;
@@ -37,15 +37,25 @@ export class HtmlExporter {
     const resources = this.vaultResources();
 
     try {
+      const searchEntries = await Promise.all(sortedFiles.map(async (file) => [
+        outputs.get(file.path) ?? "index.html",
+        `${this.title(file)}\n${await this.app.vault.cachedRead(file)}`.toLowerCase(),
+      ] as const));
+      await writeFile(
+        path.join(target, "search-index.js"),
+        `globalThis.HTMLMOGGED_SEARCH=${safeJson(Object.fromEntries(searchEntries))};`,
+        "utf8",
+      );
       for (const file of sortedFiles) {
         const output = outputs.get(file.path);
         if (!output) continue;
         const content = await this.render(file, outputs, resources, target);
         const graph = buildGraph(notes, this.app.metadataCache.resolvedLinks, outputs, file.path);
         const title = this.title(file);
+        const footer = this.noteFooter(file, sortedFiles, outputs);
         await writeFile(
           path.join(target, output),
-          this.page(title, content, navigation, graph),
+          this.page(title, content, navigation, graph, footer),
           "utf8",
         );
       }
@@ -55,7 +65,7 @@ export class HtmlExporter {
         ?? sortedFiles[0];
       const startPage = landing ? outputs.get(landing.path) ?? "index.html" : "index.html";
       await writeFile(path.join(target, "index.html"), redirectPage(startPage), "utf8");
-      await writeOutputMarker(target, ["index.html", ...outputs.values()]);
+      await writeOutputMarker(target, ["index.html", "search-index.js", ...outputs.values()]);
       await transaction.commit();
       return { destination: transaction.destination, pagesWritten: sortedFiles.length + 1, startPage };
     } catch (error) {
@@ -248,11 +258,25 @@ export class HtmlExporter {
     }).join("\n");
   }
 
+  private noteFooter(file: TFile, files: TFile[], outputs: ReadonlyMap<string, string>): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const tags = [...new Set(cache ? getAllTags(cache) ?? [] : [])].sort((a, b) => a.localeCompare(b));
+    const backlinks = findBacklinks(files, this.app.metadataCache.resolvedLinks, file.path);
+    if (tags.length === 0 && backlinks.length === 0) return "";
+
+    const tagList = tags.length === 0 ? "" : `
+      <section><h2>Tags</h2><div class="tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div></section>`;
+    const backlinkList = backlinks.length === 0 ? "" : `
+      <section><h2>Linked mentions</h2><ul>${backlinks.map((note) => `<li><a href="${escapeHtml(outputs.get(note.path) ?? "index.html")}">${escapeHtml(this.title(note))}</a></li>`).join("")}</ul></section>`;
+    return `<footer class="note-footer">${tagList}${backlinkList}</footer>`;
+  }
+
   private page(
     title: string,
     content: string,
     navigation: string,
     graph: ReturnType<typeof buildGraph>,
+    footer: string,
   ): string {
     return `<!doctype html>
 <html lang="en">
@@ -266,10 +290,16 @@ export class HtmlExporter {
 <body>
   <header class="topbar">
     <a class="brand" href="index.html">HTMLmogged</a>
-    <button id="theme-toggle" type="button">Light theme</button>
+    <div class="topbar-actions">
+      <div class="mobile-controls" aria-label="Page panels">
+        <button id="notes-toggle" type="button" aria-controls="notes-panel" aria-expanded="false">Notes</button>
+        <button id="graph-toggle" type="button" aria-controls="graph-panel" aria-expanded="false">Graph</button>
+      </div>
+      <button id="theme-toggle" type="button">Light theme</button>
+    </div>
   </header>
   <div class="shell">
-    <aside class="navigation">
+    <aside id="notes-panel" class="navigation">
       <label for="note-search">Notes</label>
       <input id="note-search" type="search" placeholder="Filter notes…" autocomplete="off">
       <nav>${navigation}</nav>
@@ -279,9 +309,10 @@ export class HtmlExporter {
         <p class="eyebrow">Exported note</p>
         <h1 class="page-title">${escapeHtml(title)}</h1>
         <div class="note-content">${content}</div>
+        ${footer}
       </article>
     </main>
-    <aside class="graph-card">
+    <aside id="graph-panel" class="graph-card">
       <div class="graph-heading">
         <div><p class="eyebrow">Vault map</p><h2>Interactive graph</h2></div>
         <span>${graph.nodes.length} nodes</span>
@@ -291,6 +322,7 @@ export class HtmlExporter {
     </aside>
   </div>
   <script id="graph-data" type="application/json">${safeJson(graph)}</script>
+  <script src="search-index.js"></script>
   <script>${PAGE_SCRIPT}</script>
 </body>
 </html>`;
@@ -395,7 +427,9 @@ a:hover { text-decoration: underline; }
 }
 .brand { color: var(--text); font-weight: 600; }
 button, input { font: inherit; }
-#theme-toggle {
+.topbar-actions, .mobile-controls { display: flex; align-items: center; gap: 6px; }
+.mobile-controls { display: none; }
+#theme-toggle, .mobile-controls button {
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -461,6 +495,11 @@ article { width: min(760px, 100%); margin: 0 auto; padding: 48px 32px 80px; }
 .note-content th, .note-content td { padding: 11px 14px; border: 1px solid var(--line); text-align: left; }
 .note-content th { color: var(--text); background: var(--panel); }
 .note-content > iframe, .lotus-output-html-iframe { display: block; width: 100%; min-height: 520px; border: 0; background: white; }
+.note-footer { display: grid; gap: 20px; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.note-footer h2 { margin: 0 0 10px; font-size: .9rem; }
+.note-footer ul { margin: 0; padding-left: 20px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tags span { padding: 3px 7px; border-radius: 4px; color: var(--muted); background: var(--panel); font-size: .8rem; }
 .htmlmogged-pdf-embed { min-height: 70vh; border-radius: 4px; }
 .callout { margin: 1.6rem 0; padding: 14px 16px; border-left: 3px solid var(--accent); border-radius: 3px; background: var(--panel); }
 .callout-title { display: flex; gap: 8px; align-items: center; font-weight: 600; color: var(--text); }
@@ -496,14 +535,29 @@ article { width: min(760px, 100%); margin: 0 auto; padding: 48px 32px 80px; }
 .graph-node:hover text, .graph-node:focus text, .graph-node.current text { opacity: 1; }
 .graph-help { margin: 0; text-align: center; color: var(--muted); font-size: .75rem; }
 @media (max-width: 1120px) {
-  .shell { grid-template-columns: 190px minmax(0, 1fr); }
-  .graph-card { display: none; }
+  .shell { display: block; }
+  .mobile-controls { display: flex; }
+  .navigation, .graph-card {
+    display: none;
+    position: fixed;
+    top: 48px;
+    bottom: 0;
+    z-index: 9;
+    width: min(320px, 100%);
+    height: auto;
+    overflow: auto;
+    box-shadow: 0 12px 32px #0006;
+  }
+  .navigation { left: 0; }
+  .graph-card { right: 0; }
+  body[data-panel="notes"] .navigation, body[data-panel="graph"] .graph-card { display: block; }
 }
 @media (max-width: 720px) {
-  .shell { display: block; }
-  .navigation { position: relative; top: 0; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  .navigation nav { max-height: 180px; }
   article { padding: 24px; }
+}
+@media (max-width: 420px) {
+  .topbar { padding: 0 8px; }
+  #theme-toggle, .mobile-controls button { padding: 0 7px; }
 }
 `;
 
@@ -537,11 +591,27 @@ const PAGE_SCRIPT = String.raw`
     }
   });
 
+  const panelButtons = ["notes", "graph"].map((panel) => ({
+    panel,
+    button: document.getElementById(panel + "-toggle"),
+  }));
+  function setPanel(panel) {
+    document.body.dataset.panel = document.body.dataset.panel === panel ? "" : panel;
+    panelButtons.forEach(({ panel: name, button }) => {
+      button?.setAttribute("aria-expanded", String(document.body.dataset.panel === name));
+    });
+  }
+  panelButtons.forEach(({ panel, button }) => button?.addEventListener("click", () => setPanel(panel)));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.dataset.panel) setPanel(document.body.dataset.panel);
+  });
+
   const search = document.getElementById("note-search");
   search?.addEventListener("input", () => {
-    const query = search.value.trim().toLowerCase();
+    const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     document.querySelectorAll("[data-note-title]").forEach((link) => {
-      link.hidden = !link.dataset.noteTitle.includes(query);
+      const haystack = globalThis.HTMLMOGGED_SEARCH?.[link.getAttribute("href")] ?? link.dataset.noteTitle;
+      link.hidden = !terms.every((term) => haystack.includes(term));
     });
   });
 

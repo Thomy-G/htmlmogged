@@ -37,6 +37,15 @@ export class HtmlExporter {
     const resources = this.vaultResources();
 
     try {
+      const searchEntries = await Promise.all(sortedFiles.map(async (file) => [
+        outputs.get(file.path) ?? "index.html",
+        `${this.title(file)}\n${await this.app.vault.cachedRead(file)}`.toLowerCase(),
+      ] as const));
+      await writeFile(
+        path.join(target, "search-index.js"),
+        `globalThis.HTMLMOGGED_SEARCH=${safeJson(Object.fromEntries(searchEntries))};`,
+        "utf8",
+      );
       for (const file of sortedFiles) {
         const output = outputs.get(file.path);
         if (!output) continue;
@@ -55,7 +64,7 @@ export class HtmlExporter {
         ?? sortedFiles[0];
       const startPage = landing ? outputs.get(landing.path) ?? "index.html" : "index.html";
       await writeFile(path.join(target, "index.html"), redirectPage(startPage), "utf8");
-      await writeOutputMarker(target, ["index.html", ...outputs.values()]);
+      await writeOutputMarker(target, ["index.html", "search-index.js", ...outputs.values()]);
       await transaction.commit();
       return { destination: transaction.destination, pagesWritten: sortedFiles.length + 1, startPage };
     } catch (error) {
@@ -297,6 +306,7 @@ export class HtmlExporter {
     </aside>
   </div>
   <script id="graph-data" type="application/json">${safeJson(graph)}</script>
+  <script src="search-index.js"></script>
   <script>${PAGE_SCRIPT}</script>
 </body>
 </html>`;
@@ -577,9 +587,10 @@ const PAGE_SCRIPT = String.raw`
 
   const search = document.getElementById("note-search");
   search?.addEventListener("input", () => {
-    const query = search.value.trim().toLowerCase();
+    const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     document.querySelectorAll("[data-note-title]").forEach((link) => {
-      link.hidden = !link.dataset.noteTitle.includes(query);
+      const haystack = globalThis.HTMLMOGGED_SEARCH?.[link.getAttribute("href")] ?? link.dataset.noteTitle;
+      link.hidden = !terms.every((term) => haystack.includes(term));
     });
   });
 

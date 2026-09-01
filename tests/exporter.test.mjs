@@ -61,15 +61,28 @@ const notesElement = {
 	addEventListener: (type, listener) => notesListeners.set(type, listener),
 	setAttribute: () => undefined,
 };
+const searchListeners = new Map();
+const searchElement = {
+	addEventListener: (type, listener) => searchListeners.set(type, listener),
+	value: "",
+};
+const searchLink = {
+	dataset: { noteTitle: "alpha" },
+	getAttribute: () => "alpha.html",
+	hidden: false,
+};
 assert.doesNotThrow(() => new vm.Script(pageScript).runInNewContext({
+	HTMLMOGGED_SEARCH: { "alpha.html": "alpha contains the hidden phrase" },
 	document: {
 		documentElement: rootElement,
 		body: bodyElement,
 		addEventListener: () => undefined,
+		querySelectorAll: () => [searchLink],
 		getElementById: (id) => id === "graph-data"
 			? { textContent: '{"nodes":[],"edges":[],"current":""}' }
 			: id === "link-graph" ? graphElement
-				: id === "theme-toggle" ? themeElement : id === "notes-toggle" ? notesElement : null,
+				: id === "theme-toggle" ? themeElement
+					: id === "notes-toggle" ? notesElement : id === "note-search" ? searchElement : null,
 	},
 	localStorage: { getItem: () => { throw new Error("storage denied"); } },
 }), "graphs initialize when local storage is unavailable");
@@ -80,6 +93,12 @@ assert.equal(rootElement.dataset.theme, "light");
 assert.equal(themeElement.textContent, "Dark theme");
 notesListeners.get("click")();
 assert.equal(bodyElement.dataset.panel, "notes");
+searchElement.value = "hidden phrase";
+searchListeners.get("input")();
+assert.equal(searchLink.hidden, false);
+searchElement.value = "missing";
+searchListeners.get("input")();
+assert.equal(searchLink.hidden, true);
 
 const testRoot = await mkdtemp(path.join(tmpdir(), "htmlmogged-test-"));
 try {

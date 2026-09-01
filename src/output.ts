@@ -70,7 +70,7 @@ async function validateExistingTarget(destination: string): Promise<boolean> {
   const entries = await readdir(destination);
   if (entries.length === 0) return true;
   if (!entries.includes(MARKER)) {
-    throw new Error("export folder is not empty and is not managed by htmlmogged");
+    throw new Error("export folder is not empty and is not managed by HTMLmogged");
   }
   await readMarker(destination);
   return true;
@@ -87,7 +87,7 @@ async function readMarker(destination: string): Promise<OutputMarker> {
     ) throw new Error("invalid marker");
     return marker as OutputMarker;
   } catch {
-    throw new Error("export folder has an invalid htmlmogged marker");
+    throw new Error("export folder has an invalid HTMLmogged marker");
   }
 }
 

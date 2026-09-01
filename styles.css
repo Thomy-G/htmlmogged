@@ -1,8 +1,14 @@
-/* htmlmogged's Obsidian UI uses native components; exported page styles are embedded. */
+/* HTMLmogged's Obsidian UI uses native components; exported page styles are embedded. */
 .htmlmogged-render-host {
   position: fixed;
   top: 0;
   left: -10000px;
   width: 900px;
   visibility: hidden;
+}
+
+.htmlmogged-note-picker {
+  max-height: min(60vh, 36rem);
+  overflow: auto;
+  border-top: 1px solid var(--background-modifier-border);
 }
